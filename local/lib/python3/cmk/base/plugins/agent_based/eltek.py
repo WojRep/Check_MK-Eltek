@@ -5,12 +5,12 @@ from .agent_based_api.v1 import *
 import sys
 import traceback
 
-NAME = "eltek"
+NAME = "eltek_flatpack2"
 SNMP_BASE = ".1.3.6.1.4.1.12148.10"
 
 # Poprawiona konfiguracja wykrywania - szukamy konkretnej wartości "Eltek"
 SNMP_DETECT = any_of(
-        exists('.1.3.6.1.4.1.12148.10.2.6.0')
+    exists('.1.3.6.1.4.1.12148.10.2.6.0')
 )
 
 # Definicje OIDs
@@ -31,7 +31,7 @@ SYSTEM_STATUS_NAME = {
     "3": "major alarm",
 }
 
-def parse_eltek(string_table):
+def parse_eltek_flatpack2(string_table):
     try:
         if not string_table or not string_table[0]:
             return {}
@@ -70,26 +70,25 @@ def parse_eltek(string_table):
         # W przypadku błędu zwracamy pustą mapę
         return {}
 
-def discover_eltek(section):
+def discover_eltek_flatpack2(section):
     if section:
-        yield Service(item="Eltek Info")
-        yield Service(item="Eltek Status")
+        yield Service(item="Info")
+        yield Service(item="Status")
 
-def check_eltek(item, section):
-    # Usunięto parametr 'params' z funkcji
+def check_eltek_flatpack2(item, params, section):  # Dodano parametr 'params', nawet jeśli nie jest używany
     if not section:
         yield Result(state=State.UNKNOWN, summary="No data")
         return
 
     try:
-        if item == "Eltek Info":
+        if item == "Info":
             model_name = section.get('model_name', {}).get('value', 'Unknown')
             firmware_version = section.get('firmware_version', {}).get('value', 'Unknown')
             site_name = section.get('site_name', {}).get('value', 'Unknown')
 
             yield Result(state=State.OK, summary=f"Model: {model_name}, Firmware: {firmware_version}, Site name: {site_name}")
 
-        elif item == "Eltek Status":
+        elif item == "Status":
             system_status = section.get('system_status', {}).get('value', 0)
             system_voltage = section.get('system_voltage', {}).get('value', 0.0)
             system_current_load = section.get('system_current_load', {}).get('value', 0.0)
@@ -135,16 +134,18 @@ register.snmp_section(
         oids=[oid['oid'] for _, oid in OIDs.items()],
     ),
     detect=SNMP_DETECT,
-    parse_function=parse_eltek,
+    parse_function=parse_eltek_flatpack2
 )
 
-# Rejestracja pluginu bez parametru check_default_parameters
+# Rejestracja pluginu z parametrem check_default_parameters
 register.check_plugin(
     name=NAME,
-    service_name="%s",
-    discovery_function=discover_eltek,
-    check_function=check_eltek,
+    service_name="Eltek %s",
+    discovery_function=discover_eltek_flatpack2,
+    check_function=check_eltek_flatpack2,
+    check_default_parameters={},  # Dodane puste parametry domyślne
     sections=[NAME],
+    check_ruleset_name=NAME
 )
 
 
@@ -165,30 +166,32 @@ TEMP_OIDs = {
 }
 
 # Statusy alarmu
+# Statusy alarmu
 ALARM_STATUS = {
-    "0": "Błąd",  # error
-    "1": "Stan normalny",  # normal
-    "2": "Alarm niskiego poziomu",  # minorAlarm
-    "3": "Alarm wysokiego poziomu",  # majorAlarm
-    "4": "Wyłączony",  # disabled
-    "5": "Odłączony",  # disconnected
-    "6": "Nieobecny",  # notPresent
-    "7": "Alarm niskiego i wysokiego poziomu",  # minorAndMajor
-    "8": "Alarm krytycznie niskiej wartości",  # majorLow
-    "9": "Alarm ostrzegawczo niskiej wartości",  # minorLow
-    "10": "Alarm krytycznie wysokiej wartości",  # majorHigh
-    "11": "Alarm ostrzegawczo wysokiej wartości",  # minorHigh
-    "12": "Zdarzenie",  # event
-    "13": "Wartość w woltach",  # valueVolt
-    "14": "Wartość w amperach",  # valueAmp
-    "15": "Wartość temperatury",  # valueTemp
-    "16": "Wartość jednostkowa",  # valueUnit
-    "17": "Wartość procentowa",  # valuePerCent
-    "18": "Stan krytyczny",  # critical
-    "19": "Ostrzeżenie"  # warning
+    "0": "Error",  # error
+    "1": "Normal state",  # normal
+    "2": "Minor alarm",  # minorAlarm
+    "3": "Major alarm",  # majorAlarm
+    "4": "Disabled",  # disabled
+    "5": "Disconnected",  # disconnected
+    "6": "Not present",  # notPresent
+    "7": "Minor and major alarm",  # minorAndMajor
+    "8": "Critically low value alarm",  # majorLow
+    "9": "Warning low value alarm",  # minorLow
+    "10": "Critically high value alarm",  # majorHigh
+    "11": "Warning high value alarm",  # minorHigh
+    "12": "Event",  # event
+    "13": "Value in volts",  # valueVolt
+    "14": "Value in amps",  # valueAmp
+    "15": "Temperature value",  # valueTemp
+    "16": "Unit value",  # valueUnit
+    "17": "Percentage value",  # valuePerCent
+    "18": "Critical state",  # critical
+    "19": "Warning"  # warning
 }
 
-def parse_eltek_temp(string_table):
+
+def parse_eltek_flatpack2_temp(string_table):
     try:
         if not string_table or not string_table[0]:
             return {}
@@ -227,7 +230,7 @@ def parse_eltek_temp(string_table):
         # W przypadku błędu zwracamy pustą mapę
         return {}
 
-def discover_eltek_temp(section):
+def discover_eltek_flatpack2_temp(section):
     if not section:
         return
 
@@ -238,33 +241,33 @@ def discover_eltek_temp(section):
 
         # Jeśli dostępna temperatura prostownika
         if rectifier_temp and rectifier_temp != "N/A":
-            yield Service(item="Prostownik Temp")
+            yield Service(item="Rectifier Temp")
 
         # Jeśli dostępna temperatura baterii
         if battery_temp and battery_temp != "N/A":
-            yield Service(item="Bateria Temp")
+            yield Service(item="Battery Temp")
     except Exception:
         return
 
-def check_eltek_temp(item, params, section):
+def check_eltek_flatpack2_temp(item, params, section):
     if not section:
         yield Result(state=State.UNKNOWN, summary="No data")
         return
 
     try:
-        if item == "Prostownik Temp":
+        if item == "Rectifier Temp":  # Zmienione z "Prostownik Temp"
             temp_value = section.get('rectifier_temp', {}).get('value', None)
             status_value = section.get('rectifier_temp_status', {}).get('value', None)
-            source_type = "Prostownik"
+            source_type = "Rectifier"  # Zmienione z "Prostownik"
 
             # Progi temperatur dla prostownika
             warn_temp = params.get("levels", (40.0, 50.0))[0]
             crit_temp = params.get("levels", (40.0, 50.0))[1]
 
-        elif item == "Bateria Temp":
+        elif item == "Battery Temp":
             temp_value = section.get('battery_temp', {}).get('value', None)
             status_value = section.get('battery_temp_status', {}).get('value', None)
-            source_type = "Bateria"
+            source_type = "Battery"
 
             # Progi temperatur dla baterii
             warn_temp = params.get("levels", (30.0, 40.0))[0]
@@ -280,7 +283,7 @@ def check_eltek_temp(item, params, section):
         if temp_value is not None:
             try:
                 temp_value = float(temp_value)
-                summary_parts.append(f"Temperatura: {temp_value:.1f}°C")
+                summary_parts.append(f"Temperature: {temp_value:.1f}°C")
 
                 # Sprawdzenie progów temperatur
                 if temp_value > crit_temp:
@@ -288,13 +291,13 @@ def check_eltek_temp(item, params, section):
                 elif temp_value > warn_temp:
                     state = State.WARN
             except (ValueError, TypeError):
-                summary_parts.append(f"Temperatura: {temp_value}")
+                summary_parts.append(f"Temperature: {temp_value}")
 
         # Obsługa statusu
         if status_value is not None:
             try:
                 status_numeric = int(status_value)
-                status_text = ALARM_STATUS.get(str(status_numeric), f"Status nieznany ({status_numeric})")
+                status_text = ALARM_STATUS.get(str(status_numeric), f"Unknown Status ({status_numeric})")
                 summary_parts.append(f"Status: {status_text}")
 
                 # Mapowanie statusów na stany monitorowania
@@ -303,7 +306,7 @@ def check_eltek_temp(item, params, section):
                         state = State.CRIT
                 elif status_numeric in [2, 9, 11, 19] and state != State.CRIT:  # Stany ostrzegawcze
                     state = State.WARN
-                elif status_numeric in [4, 5, 6] and state == State.OK:  # Brak danych
+                elif status_numeric in [4, 5, 6] and state == State.OK:
                     state = State.UNKNOWN
             except (ValueError, TypeError):
                 summary_parts.append(f"Status: {status_value}")
@@ -311,7 +314,7 @@ def check_eltek_temp(item, params, section):
         summary = f"{source_type}: " + ", ".join(summary_parts)
 
         if not summary_parts:
-            yield Result(state=State.UNKNOWN, summary=f"Brak danych dla {source_type}")
+            yield Result(state=State.UNKNOWN, summary=f"No data for {source_type}")  # Zmienione z "Brak danych dla"
         else:
             yield Result(state=state, summary=summary)
 
@@ -331,16 +334,18 @@ register.snmp_section(
         oids=[oid['oid'] for _, oid in TEMP_OIDs.items()],
     ),
     detect=SNMP_DETECT,
-    parse_function=parse_eltek_temp,
+    parse_function=parse_eltek_flatpack2_temp
 )
 
-# Rejestracja pluginu temperatur
+# Rejestracja pluginu temperatur z poprawnym ruleset name
 register.check_plugin(
     name=NAME + "_temp",
-    service_name="%s",
-    discovery_function=discover_eltek_temp,
-    check_function=check_eltek_temp,
-    check_default_parameters={},
+    service_name="Eltek %s",
+    discovery_function=discover_eltek_flatpack2_temp,
+    check_function=check_eltek_flatpack2_temp,
+    check_default_parameters={
+        "levels": (40.0, 50.0),  # Domyślne progi dla temperatury
+    },
     check_ruleset_name='temperature',
-    sections=[NAME + "_temp"],
+    sections=[NAME + "_temp"]
 )
