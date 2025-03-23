@@ -14,7 +14,6 @@ def perfometer_eltek(row, check_command, perf_data):
     for perf in perf_data:
         perf = list(perf)
         if PERF.get(perf[0]):
-#        if (name, value, _1, _2, _3, _4, _5 = perf):
             name, value, xxx, warm, crit, _min, _max = perf
             perf_def = PERF[name]
             if perf_def['type'] == 'linear':
