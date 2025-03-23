@@ -156,168 +156,191 @@ register.check_plugin(
 #####################################################
 #####################################################
 
-
-ALARM = {
-    '0': 'Błąd',  # error
-    '1': 'Stan normalny',  # normal
-    '2': 'Alarm niskiego poziomu',  # minorAlarm
-    '3': 'Alarm wysokiego poziomu',  # majorAlarm
-    '4': 'Wyłączony',  # disabled
-    '5': 'Odłączony',  # disconnected
-    '6': 'Nieobecny',  # notPresent
-    '7': 'Alarm niskiego i wysokiego poziomu',  # minorAndMajor
-    '8': 'Alarm krytycznie niskiej wartości',  # majorLow
-    '9': 'Alarm ostrzegawczo niskiej wartości',  # minorLow
-    '10': 'Alarm krytycznie wysokiej wartości',  # majorHigh
-    '11': 'Alarm ostrzegawczo wysokiej wartości',  # minorHigh
-    '12': 'Zdarzenie',  # event
-    '13': 'Wartość w woltach',  # valueVolt
-    '14': 'Wartość w amperach',  # valueAmp
-    '15': 'Wartość temperatury',  # valueTemp
-    '16': 'Wartość jednostkowa',  # valueUnit
-    '17': 'Wartość procentowa',  # valuePerCent
-    '18': 'Stan krytyczny',  # critical
-    '19': 'Ostrzeżenie'  # warning
+# Definicje OIDs dla temperatur
+TEMP_OIDs = {
+    '0': {'id': 'rectifier_temp', 'oid': '5.18.5.0', 'name': "Rectifier Temperature", 'do_metric': True, 'divider': 1},
+    '1': {'id': 'rectifier_temp_status', 'oid': '5.18.1.0', 'name': "Rectifier Temperature Status", 'do_metric': True, 'divider': 1},
+    '2': {'id': 'battery_temp', 'oid': '10.7.5.0', 'name': "Battery Temperature", 'do_metric': True, 'divider': 1},
+    '3': {'id': 'battery_temp_status', 'oid': '10.7.1.0', 'name': "Battery Temperature Status", 'do_metric': True, 'divider': 1},
 }
 
-# Typ źródła pomiaru
-SOURCE_TYPE = {
-    'rectifier': 'Prostownik',
-    'battery': 'Bateria'
+# Statusy alarmu
+ALARM_STATUS = {
+    "0": "Błąd",  # error
+    "1": "Stan normalny",  # normal
+    "2": "Alarm niskiego poziomu",  # minorAlarm
+    "3": "Alarm wysokiego poziomu",  # majorAlarm
+    "4": "Wyłączony",  # disabled
+    "5": "Odłączony",  # disconnected
+    "6": "Nieobecny",  # notPresent
+    "7": "Alarm niskiego i wysokiego poziomu",  # minorAndMajor
+    "8": "Alarm krytycznie niskiej wartości",  # majorLow
+    "9": "Alarm ostrzegawczo niskiej wartości",  # minorLow
+    "10": "Alarm krytycznie wysokiej wartości",  # majorHigh
+    "11": "Alarm ostrzegawczo wysokiej wartości",  # minorHigh
+    "12": "Zdarzenie",  # event
+    "13": "Wartość w woltach",  # valueVolt
+    "14": "Wartość w amperach",  # valueAmp
+    "15": "Wartość temperatury",  # valueTemp
+    "16": "Wartość jednostkowa",  # valueUnit
+    "17": "Wartość procentowa",  # valuePerCent
+    "18": "Stan krytyczny",  # critical
+    "19": "Ostrzeżenie"  # warning
 }
+
+def parse_eltek_temp(string_table):
+    try:
+        if not string_table or not string_table[0]:
+            return {}
+
+        parameters = string_table[0]
+        param_list = {}
+
+        for n in range(min(len(parameters), len(TEMP_OIDs))):
+            try:
+                oid_info = TEMP_OIDs.get(str(n), {})
+                value = parameters[n]
+                divider = oid_info.get('divider', 1)
+
+                # Konwersja wartości
+                if value.isdigit() and divider == 1:
+                    value = int(value)
+                elif value.isdigit():
+                    value = float(int(value) / divider)
+                else:
+                    # Pozostaw jako string
+                    value = str(value)
+                    if value == '':
+                        value = "N/A"
+
+                param_list[oid_info['id']] = {
+                    'value': value,
+                    'name': oid_info['name'],
+                    'do_metric': oid_info.get('do_metric', False),
+                }
+            except Exception as e:
+                # Ignoruj problematyczne OIDy
+                continue
+
+        return param_list
+    except Exception:
+        # W przypadku błędu zwracamy pustą mapę
+        return {}
 
 def discover_eltek_temp(section):
-    # Lepsze sprawdzanie pustych sekcji
-    if not section or not section[0]:
+    if not section:
         return
 
     try:
-        # Sprawdź dostępne źródła temperatur
-        rectifier_temp = section[0][0] if len(section[0]) > 0 else ""
-        battery_temp = section[0][2] if len(section[0]) > 2 else ""
+        # Sprawdzamy dostępność temperatur prostownika i baterii
+        rectifier_temp = section.get('rectifier_temp', {}).get('value', None)
+        battery_temp = section.get('battery_temp', {}).get('value', None)
 
         # Jeśli dostępna temperatura prostownika
-        if rectifier_temp and rectifier_temp != "":
-            yield Service(item=f"{SOURCE_TYPE['rectifier']} Temp")
+        if rectifier_temp and rectifier_temp != "N/A":
+            yield Service(item="Prostownik Temp")
 
         # Jeśli dostępna temperatura baterii
-        if battery_temp and battery_temp != "":
-            yield Service(item=f"{SOURCE_TYPE['battery']} Temp")
+        if battery_temp and battery_temp != "N/A":
+            yield Service(item="Bateria Temp")
     except Exception:
-        # W przypadku wyjątku nie wykrywamy nic
         return
 
-
 def check_eltek_temp(item, params, section):
-    # Poprawiona obsługa pustych danych
     if not section:
         yield Result(state=State.UNKNOWN, summary="No data")
         return
 
-    if not section[0]:
-        yield Result(state=State.UNKNOWN, summary="No correct data")
-        return
-
     try:
-        # Identyfikacja typu źródła na podstawie item
-        source_type = None
-        if SOURCE_TYPE['rectifier'] in item and len(section[0]) > 1:
-            source_type = 'rectifier'
-            temp_value = section[0][0]
-            status_value = section[0][1]
-        elif SOURCE_TYPE['battery'] in item and len(section[0]) > 3:
-            source_type = 'battery'
-            temp_value = section[0][2]
-            status_value = section[0][3]
+        if item == "Prostownik Temp":
+            temp_value = section.get('rectifier_temp', {}).get('value', None)
+            status_value = section.get('rectifier_temp_status', {}).get('value', None)
+            source_type = "Prostownik"
+
+            # Progi temperatur dla prostownika
+            warn_temp = params.get("levels", (40.0, 50.0))[0]
+            crit_temp = params.get("levels", (40.0, 50.0))[1]
+
+        elif item == "Bateria Temp":
+            temp_value = section.get('battery_temp', {}).get('value', None)
+            status_value = section.get('battery_temp_status', {}).get('value', None)
+            source_type = "Bateria"
+
+            # Progi temperatur dla baterii
+            warn_temp = params.get("levels", (30.0, 40.0))[0]
+            crit_temp = params.get("levels", (30.0, 40.0))[1]
         else:
             yield Result(state=State.UNKNOWN, summary=f"Unknown source type in {item}")
             return
-
-        # Konwersja temperatury na wartość liczbową
-        try:
-            temp_numeric = float(temp_value) / 1  # Zakładamy, że wartość jest w jednostkach 1°C
-        except (ValueError, TypeError):
-            temp_numeric = None
-
-        # Konwersja statusu na wartość liczbową
-        try:
-            status_numeric = int(status_value)
-        except (ValueError, TypeError):
-            status_numeric = None
 
         state = State.OK
         summary_parts = []
 
         # Obsługa wartości temperatury
-        if temp_numeric is not None:
-            summary_parts.append(f"Temperatura: {temp_numeric:.1f}°C")
+        if temp_value is not None:
+            try:
+                temp_value = float(temp_value)
+                summary_parts.append(f"Temperatura: {temp_value:.1f}°C")
 
-            # Progi alarmowe (można dostosować)
-            if source_type == 'rectifier':
-                if temp_numeric > 50.0:
+                # Sprawdzenie progów temperatur
+                if temp_value > crit_temp:
                     state = State.CRIT
-                elif temp_numeric > 40.0 and state != State.CRIT:
+                elif temp_value > warn_temp:
                     state = State.WARN
-            elif source_type == 'battery':
-                if temp_numeric > 40.0:
-                    state = State.CRIT
-                elif temp_numeric > 30.0 and state != State.CRIT:
-                    state = State.WARN
+            except (ValueError, TypeError):
+                summary_parts.append(f"Temperatura: {temp_value}")
 
         # Obsługa statusu
-        if status_numeric is not None:
-            status_text = ALARM.get(str(status_numeric), f"Status nieznany ({status_numeric})")
-            summary_parts.append(f"Status: {status_text}")
+        if status_value is not None:
+            try:
+                status_numeric = int(status_value)
+                status_text = ALARM_STATUS.get(str(status_numeric), f"Status nieznany ({status_numeric})")
+                summary_parts.append(f"Status: {status_text}")
 
-            # Mapowanie statusów na stany monitorowania
-            if status_numeric in [0, 3, 7, 8, 10, 18]:  # Stany krytyczne
-                state = State.CRIT
-            elif status_numeric in [2, 9, 11, 19] and state != State.CRIT:  # Stany ostrzegawcze
-                state = State.WARN
-            elif status_numeric in [4, 5, 6] and state not in [State.CRIT, State.WARN]:  # Brak danych
-                state = State.UNKNOWN
+                # Mapowanie statusów na stany monitorowania
+                if status_numeric in [0, 3, 7, 8, 10, 18]:  # Stany krytyczne
+                    if state != State.CRIT:  # Nie nadpisujemy już wykrytego stanu krytycznego
+                        state = State.CRIT
+                elif status_numeric in [2, 9, 11, 19] and state != State.CRIT:  # Stany ostrzegawcze
+                    state = State.WARN
+                elif status_numeric in [4, 5, 6] and state == State.OK:  # Brak danych
+                    state = State.UNKNOWN
+            except (ValueError, TypeError):
+                summary_parts.append(f"Status: {status_value}")
 
-        # Metryki dla wykresów
-        metrics = []
-        if temp_numeric is not None:
-            metrics.append(Metric("temperature", temp_numeric))
-        if status_numeric is not None:
-            metrics.append(Metric("status", status_numeric))
-
-        summary = f"{SOURCE_TYPE.get(source_type, 'Nieznany')}: " + ", ".join(summary_parts)
+        summary = f"{source_type}: " + ", ".join(summary_parts)
 
         if not summary_parts:
-            yield Result(state=State.UNKNOWN, summary=f"Brak danych dla {SOURCE_TYPE.get(source_type, 'źródła')}")
+            yield Result(state=State.UNKNOWN, summary=f"Brak danych dla {source_type}")
         else:
-            # Poprawione wyrażenie - nie rozpakowujemy pustej listy
             yield Result(state=state, summary=summary)
-            # Dodajemy metryki osobno
-            for metric in metrics:
-                yield metric
+
+            # Metryki
+            if temp_value is not None and isinstance(temp_value, (int, float)):
+                yield Metric("temperature", temp_value, levels=(warn_temp, crit_temp))
+            if status_value is not None and isinstance(status_value, (int, float)):
+                yield Metric("status", float(status_value))
     except Exception as e:
-        yield Result(state=State.UNKNOWN, summary=f"Check error: {str(e)}")
+        yield Result(state=State.UNKNOWN, summary=f"Check error: {e}")
 
-
+# Rejestracja sekcji SNMP dla temperatur
 register.snmp_section(
     name=NAME + "_temp",
-    fetch = SNMPTree(
-        base = SNMP_BASE,
-        oids = [
-            "5.18.5.0", # Restifier Temperatura
-            "5.18.1.0", # Rectifier Temperature Status:
-            "10.7.5.0", # Battery Temperatura
-            "10.7.1.0"  # Battery Temperature Status:
-        ],
+    fetch=SNMPTree(
+        base=SNMP_BASE,
+        oids=[oid['oid'] for _, oid in TEMP_OIDs.items()],
     ),
-    detect = SNMP_DETECT,
+    detect=SNMP_DETECT,
+    parse_function=parse_eltek_temp,
 )
 
+# Rejestracja pluginu temperatur
 register.check_plugin(
-    name = NAME + "_temp",
-    sections=[NAME+"_temp"],
-    service_name = "%s",
-    discovery_function = discover_eltek_temp,
+    name=NAME + "_temp",
+    service_name="%s",
+    discovery_function=discover_eltek_temp,
+    check_function=check_eltek_temp,
     check_default_parameters={},
-    check_ruleset_name='temperature',  # Poprawiona nazwa ruleset - teraz używamy standardowej nazwy
-    check_function = check_eltek_temp,
+    check_ruleset_name='temperature',
+    sections=[NAME + "_temp"],
 )
